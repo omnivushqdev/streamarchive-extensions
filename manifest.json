@@ -1,5 +1,5 @@
 {
   "pluginClassNames": [
-    "com.easy.streamarchive.core.extensions.SlotintvProvider"
+    "com.easy.streamarchive.core.extensions.SlotintvPlugin"
   ]
 }
