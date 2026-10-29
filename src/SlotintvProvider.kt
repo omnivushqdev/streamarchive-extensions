@@ -4,8 +4,6 @@ import android.content.Context
 import android.os.Handler
 import android.os.Looper
 import android.webkit.CookieManager
-import android.webkit.WebResourceError
-import android.webkit.WebResourceRequest
 import android.webkit.WebView
 import android.webkit.WebViewClient
 import com.easy.streamarchive.core.api.ExtractorLink
@@ -226,6 +224,7 @@ class SlotintvProvider(private val appContext: Context? = null) : MainApi() {
                     if (finished) return
                     finished = true
                     handler.removeCallbacksAndMessages(null)
+                    cookieManager.flush()
                     val cookie = cookieManager.getCookie(url).orEmpty()
                     webView.destroy()
                     if (cont.isActive) cont.resume(storeSession(cookie))
@@ -243,22 +242,18 @@ class SlotintvProvider(private val appContext: Context? = null) : MainApi() {
                     }
                 }
 
+                val graceFinish = Runnable { finish() }
                 webView.webViewClient = object : WebViewClient() {
                     override fun onPageFinished(view: WebView, u: String) {
-                        handler.postDelayed({ finish() }, 3000)
-                    }
-
-                    override fun onReceivedError(
-                        view: WebView,
-                        request: WebResourceRequest,
-                        error: WebResourceError
-                    ) {
-                        if (request.isForMainFrame) finish()
+                        handler.removeCallbacks(graceFinish)
+                        handler.postDelayed(graceFinish, 4000)
                     }
                 }
 
                 cont.invokeOnCancellation { finish() }
-                webView.loadUrl(url)
+                val schemeEnd = url.indexOf("://")
+                val pathStart = if (schemeEnd >= 0) url.indexOf('/', schemeEnd + 3) else -1
+                webView.loadUrl(if (pathStart > 0) url.substring(0, pathStart) else url)
                 handler.postDelayed(poller, 500)
             }
         }
