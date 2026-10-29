@@ -4,6 +4,7 @@ import android.content.Context
 import android.os.Handler
 import android.os.Looper
 import android.webkit.CookieManager
+import android.util.Log
 import android.webkit.WebView
 import android.webkit.WebViewClient
 import com.easy.streamarchive.core.api.ExtractorLink
@@ -259,6 +260,65 @@ class SlotintvProvider(private val appContext: Context? = null) : MainApi() {
         }
     }
 
+    private suspend fun probeStream(
+        url: String,
+        candidates: List<Map<String, String>>
+    ): Map<String, String>? = withContext(Dispatchers.IO) {
+        candidates.forEach { headers ->
+            val request = Request.Builder().url(url).apply {
+                headers.forEach { (k, v) -> header(k, v) }
+            }.build()
+            val code = runCatching {
+                client.newCall(request).execute().use { it.code }
+            }.getOrDefault(-1)
+            Log.d("SlotinTV", "probe ${headers.keys} -> $code")
+            if (code in 200..399) return@withContext headers
+        }
+        null
+    }
+
+    private fun candidatesFor(session: CfSession?, streamUrl: String): List<Map<String, String>> {
+        val wvUa = session?.userAgent ?: userAgent
+        val cookie = session?.cookie.orEmpty()
+        val cdnRoot = streamUrl.substringBefore("/mono.m3u8").substringBeforeLast("/")
+        return buildList {
+            if (cookie.isNotBlank()) {
+                add(mapOf(
+                    "User-Agent" to wvUa,
+                    "Referer" to "$mainUrl/",
+                    "Origin" to mainUrl,
+                    "Cookie" to cookie
+                ))
+                add(mapOf(
+                    "User-Agent" to wvUa,
+                    "Referer" to "$cdnRoot/",
+                    "Origin" to cdnRoot,
+                    "Cookie" to cookie
+                ))
+            }
+            add(mapOf(
+                "User-Agent" to wvUa,
+                "Referer" to "$mainUrl/",
+                "Origin" to mainUrl
+            ))
+            add(mapOf(
+                "User-Agent" to userAgent,
+                "Referer" to "$mainUrl/"
+            ))
+            add(mapOf("User-Agent" to wvUa))
+        }
+    }
+
+    private suspend fun clearWebViewCookies() {
+        runCatching {
+            withContext(Dispatchers.Main) {
+                val cm = CookieManager.getInstance()
+                cm.removeAllCookies(null)
+                cm.flush()
+            }
+        }
+    }
+
     override suspend fun loadLinks(
         data: String,
         isCasting: Boolean,
@@ -274,22 +334,28 @@ class SlotintvProvider(private val appContext: Context? = null) : MainApi() {
             "$base$data/mono.m3u8"
         }
 
-        val session = warmupCloudflare(streamUrl)
-        val headers = mutableMapOf(
-            "User-Agent" to (session?.userAgent ?: userAgent),
-            "Origin" to mainUrl
-        )
-        session?.cookie?.takeIf { it.isNotBlank() }?.let { headers["Cookie"] = it }
+        var session = warmupCloudflare(streamUrl)
+        var winning = probeStream(streamUrl, candidatesFor(session, streamUrl))
+
+        if (winning == null) {
+            clearWebViewCookies()
+            cfCache.clear()
+            session = warmupCloudflare(streamUrl)
+            winning = probeStream(streamUrl, candidatesFor(session, streamUrl))
+        }
+
+        val chosen = winning ?: candidatesFor(session, streamUrl).first()
+        val referer = chosen["Referer"].orEmpty()
 
         callback(
             ExtractorLink(
                 source = name,
                 name = name,
                 url = streamUrl,
-                referer = "$mainUrl/",
+                referer = referer,
                 quality = 720,
                 type = ExtractorLinkType.M3U8,
-                headers = headers
+                headers = chosen - "Referer"
             )
         )
         return true
