@@ -3,8 +3,10 @@ package com.easy.streamarchive.core.extensions
 import android.content.Context
 import android.os.Handler
 import android.os.Looper
-import android.webkit.CookieManager
+import android.util.Base64
 import android.util.Log
+import android.webkit.CookieManager
+import android.webkit.JavascriptInterface
 import android.webkit.WebView
 import android.webkit.WebViewClient
 import com.easy.streamarchive.core.api.ExtractorLink
@@ -19,12 +21,23 @@ import com.easy.streamarchive.core.api.MovieSearchResponse
 import com.easy.streamarchive.core.api.SearchResponse
 import com.easy.streamarchive.core.api.SubtitleFile
 import com.easy.streamarchive.core.api.TvType
+import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.suspendCancellableCoroutine
 import kotlinx.coroutines.withContext
+import kotlinx.coroutines.withTimeoutOrNull
 import okhttp3.OkHttpClient
 import okhttp3.Request
 import org.json.JSONObject
+import java.io.BufferedReader
+import java.io.InputStreamReader
+import java.net.InetAddress
+import java.net.ServerSocket
+import java.net.Socket
+import java.net.URLDecoder
+import java.net.URLEncoder
+import java.util.UUID
 import java.util.concurrent.ConcurrentHashMap
 import java.util.concurrent.TimeUnit
 import kotlin.coroutines.resume
@@ -61,11 +74,6 @@ class SlotintvProvider(private val appContext: Context? = null) : MainApi() {
         val posterUrl: String?,
         val isChannel: Boolean
     )
-
-    private data class CfSession(val userAgent: String, val cookie: String)
-
-    private val cfCache = ConcurrentHashMap<String, Pair<Long, CfSession>>()
-    private val cfTtlMs = 15 * 60 * 1000L
 
     private var cachedItems: List<LiveItem> = emptyList()
 
@@ -178,145 +186,173 @@ class SlotintvProvider(private val appContext: Context? = null) : MainApi() {
         )
     }
 
-    private suspend fun warmupCloudflare(url: String): CfSession? {
-        val ctx = appContext ?: return null
-        val host = url.substringAfter("://").substringBefore("/").substringBefore(":")
-        return withContext(Dispatchers.Main) {
-            suspendCancellableCoroutine { cont ->
-                val cookieManager = CookieManager.getInstance()
-                cookieManager.setAcceptCookie(true)
+    // ---------- WebView proxy (Cloudflare bypass) ----------
 
-                val webView = WebView(ctx).apply {
-                    settings.javaScriptEnabled = true
-                    settings.domStorageEnabled = true
+    private inner class FetchResult(
+        val status: Int,
+        val contentType: String,
+        val body: ByteArray
+    )
+
+    private inner class JsBridge {
+        @JavascriptInterface
+        fun onResult(id: String, status: Int, contentType: String, bodyB64: String) {
+            val body = runCatching {
+                Base64.decode(bodyB64, Base64.DEFAULT)
+            }.getOrDefault(ByteArray(0))
+            pending[id]?.complete(FetchResult(status, contentType, body))
+        }
+    }
+
+    private val pending =
+        ConcurrentHashMap<String, CompletableDeferred<FetchResult>>()
+
+    @Volatile private var proxyView: WebView? = null
+    @Volatile private var proxyPort = 0
+    @Volatile private var proxyHost: String? = null
+    private val mainHandler = Handler(Looper.getMainLooper())
+
+    private fun hostOf(url: String): String =
+        url.substringAfter("://").substringBefore("/").substringBefore(":")
+
+    private fun rootOf(url: String): String {
+        val schemeEnd = url.indexOf("://")
+        if (schemeEnd < 0) return url
+        val pathStart = url.indexOf('/', schemeEnd + 3)
+        return if (pathStart > 0) url.substring(0, pathStart) else url
+    }
+
+    private suspend fun ensureProxy(targetUrl: String) = withContext(Dispatchers.Main) {
+        val ctx = appContext ?: return@withContext
+        val host = hostOf(targetUrl)
+
+        if (proxyView == null) {
+            val wv = WebView(ctx)
+            wv.settings.javaScriptEnabled = true
+            wv.settings.domStorageEnabled = true
+            wv.addJavascriptInterface(JsBridge(), "AndroidBridge")
+            proxyView = wv
+        }
+        if (proxyPort == 0) startProxyServer()
+
+        if (proxyHost != host) {
+            proxyHost = host
+            suspendCancellableCoroutine<Unit> { cont ->
+                var resumed = false
+                fun done() {
+                    if (resumed) return
+                    resumed = true
+                    if (cont.isActive) cont.resume(Unit)
                 }
-                val ua = webView.settings.userAgentString
-
-                fun storeSession(cookie: String): CfSession {
-                    val session = CfSession(ua, cookie)
-                    cfCache[host] = System.currentTimeMillis() to session
-                    return session
-                }
-
-                cfCache[host]?.let { (time, session) ->
-                    val fresh = System.currentTimeMillis() - time < cfTtlMs
-                    val jar = cookieManager.getCookie(url).orEmpty()
-                    val valid = session.cookie.isBlank() ||
-                        jar.contains("cf_clearance")
-                    if (fresh && valid) {
-                        webView.destroy()
-                        cont.resume(session)
-                        return@suspendCancellableCoroutine
-                    }
-                }
-
-                val existing = cookieManager.getCookie(url).orEmpty()
-                if (existing.contains("cf_clearance")) {
-                    webView.destroy()
-                    cont.resume(storeSession(existing))
-                    return@suspendCancellableCoroutine
-                }
-
-                val handler = Handler(Looper.getMainLooper())
-                var finished = false
-                var ticks = 0
-
-                fun finish() {
-                    if (finished) return
-                    finished = true
-                    handler.removeCallbacksAndMessages(null)
-                    cookieManager.flush()
-                    val cookie = cookieManager.getCookie(url).orEmpty()
-                    webView.destroy()
-                    if (cont.isActive) cont.resume(storeSession(cookie))
-                }
-
-                val poller = object : Runnable {
-                    override fun run() {
-                        ticks++
-                        val cookie = cookieManager.getCookie(url).orEmpty()
-                        if (cookie.contains("cf_clearance") || ticks >= 24) {
-                            finish()
-                        } else {
-                            handler.postDelayed(this, 500)
-                        }
-                    }
-                }
-
-                val graceFinish = Runnable { finish() }
-                webView.webViewClient = object : WebViewClient() {
+                proxyView?.webViewClient = object : WebViewClient() {
                     override fun onPageFinished(view: WebView, u: String) {
-                        handler.removeCallbacks(graceFinish)
-                        handler.postDelayed(graceFinish, 4000)
+                        mainHandler.postDelayed({ done() }, 4000)
                     }
                 }
-
-                cont.invokeOnCancellation { finish() }
-                val schemeEnd = url.indexOf("://")
-                val pathStart = if (schemeEnd >= 0) url.indexOf('/', schemeEnd + 3) else -1
-                webView.loadUrl(if (pathStart > 0) url.substring(0, pathStart) else url)
-                handler.postDelayed(poller, 500)
+                proxyView?.loadUrl(rootOf(targetUrl))
+                mainHandler.postDelayed({ done() }, 10000)
             }
         }
     }
 
-    private suspend fun probeStream(
-        url: String,
-        candidates: List<Map<String, String>>
-    ): Map<String, String>? = withContext(Dispatchers.IO) {
-        candidates.forEach { headers ->
-            val request = Request.Builder().url(url).apply {
-                headers.forEach { (k, v) -> header(k, v) }
-            }.build()
-            val code = runCatching {
-                client.newCall(request).execute().use { it.code }
-            }.getOrDefault(-1)
-            Log.d("SlotinTV", "probe ${headers.keys} -> $code")
-            if (code in 200..399) return@withContext headers
-        }
-        null
-    }
-
-    private fun candidatesFor(session: CfSession?, streamUrl: String): List<Map<String, String>> {
-        val wvUa = session?.userAgent ?: userAgent
-        val cookie = session?.cookie.orEmpty()
-        val cdnRoot = streamUrl.substringBefore("/mono.m3u8").substringBeforeLast("/")
-        return buildList {
-            if (cookie.isNotBlank()) {
-                add(mapOf(
-                    "User-Agent" to wvUa,
-                    "Referer" to "$mainUrl/",
-                    "Origin" to mainUrl,
-                    "Cookie" to cookie
-                ))
-                add(mapOf(
-                    "User-Agent" to wvUa,
-                    "Referer" to "$cdnRoot/",
-                    "Origin" to cdnRoot,
-                    "Cookie" to cookie
-                ))
+    private fun startProxyServer() {
+        val socket = ServerSocket(0, 50, InetAddress.getByName("127.0.0.1"))
+        proxyPort = socket.localPort
+        Thread {
+            while (!socket.isClosed) {
+                val client = runCatching { socket.accept() }.getOrNull() ?: break
+                Thread { handleProxyRequest(client) }.start()
             }
-            add(mapOf(
-                "User-Agent" to wvUa,
-                "Referer" to "$mainUrl/",
-                "Origin" to mainUrl
-            ))
-            add(mapOf(
-                "User-Agent" to userAgent,
-                "Referer" to "$mainUrl/"
-            ))
-            add(mapOf("User-Agent" to wvUa))
+        }.apply { isDaemon = true }.start()
+        Log.d("SlotinTV", "proxy on 127.0.0.1:$proxyPort")
+    }
+
+    private fun handleProxyRequest(socket: Socket) {
+        socket.use { s ->
+            val reader = BufferedReader(InputStreamReader(s.getInputStream()))
+            val requestLine = reader.readLine() ?: return
+            while (reader.readLine()?.isNotEmpty() == true) Unit // skip headers
+            val target = runCatching {
+                val query = requestLine.substringAfter(" ").substringBefore(" ")
+                val u = query.substringAfter("u=", "")
+                URLDecoder.decode(u, "UTF-8")
+            }.getOrNull() ?: return
+
+            val result = runBlocking { wvFetch(target) }
+            val out = s.getOutputStream()
+            if (result == null) {
+                out.write("HTTP/1.1 502 Bad Gateway\r\nContent-Length: 0\r\n\r\n".toByteArray())
+                out.flush()
+                return
+            }
+            var body = result.body
+            var contentType = result.contentType
+            if (target.endsWith(".m3u8", ignoreCase = true) ||
+                contentType.contains("mpegurl", ignoreCase = true)
+            ) {
+                body = rewritePlaylist(String(body, Charsets.UTF_8), target)
+                    .toByteArray(Charsets.UTF_8)
+                contentType = "application/vnd.apple.mpegurl"
+            }
+            val head = "HTTP/1.1 ${result.status} OK\r\n" +
+                "Content-Type: $contentType\r\n" +
+                "Content-Length: ${body.size}\r\n" +
+                "Connection: close\r\n\r\n"
+            out.write(head.toByteArray())
+            out.write(body)
+            out.flush()
         }
     }
 
-    private suspend fun clearWebViewCookies() {
+    private fun rewritePlaylist(playlist: String, playlistUrl: String): String {
+        val base = playlistUrl.substringBeforeLast("/")
+        fun absolutize(uri: String): String = when {
+            uri.startsWith("http") -> uri
+            uri.startsWith("/") -> rootOf(playlistUrl) + uri
+            else -> "$base/$uri"
+        }
+        fun proxify(uri: String): String =
+            "http://127.0.0.1:$proxyPort/f?u=" + URLEncoder.encode(absolutize(uri), "UTF-8")
+
+        return playlist.lines().joinToString("\n") { line ->
+            when {
+                line.startsWith("#") -> line.replace(
+                    Regex("""URI="([^"]+)"""")
+                ) { m -> "URI=\"${proxify(m.groupValues[1])}\"" }
+                line.isBlank() -> line
+                else -> proxify(line.trim())
+            }
+        }
+    }
+
+    private suspend fun wvFetch(url: String): FetchResult? {
+        val wv = proxyView ?: return null
+        val id = UUID.randomUUID().toString()
+        val deferred = CompletableDeferred<FetchResult>()
+        pending[id] = deferred
+        val js = """(function(){fetch("$url",{credentials:'include'})
+            .then(async function(r){var b=await r.arrayBuffer();var u=new Uint8Array(b);
+            var s='';for(var i=0;i<u.length;i+=16384){s+=String.fromCharCode.apply(null,
+            u.subarray(i,Math.min(i+16384,u.length)))}
+            AndroidBridge.onResult("$id",r.status,
+            (r.headers.get('content-type')||'application/octet-stream'),btoa(s))})
+            .catch(function(e){AndroidBridge.onResult("$id",-1,'','')})})()"""
+        withContext(Dispatchers.Main) {
+            runCatching { wv.evaluateJavascript(js, null) }
+        }
+        val result = withTimeoutOrNull(30_000) { deferred.await() }
+        pending.remove(id)
+        return result
+    }
+
+    private suspend fun probeStream(url: String): Boolean = withContext(Dispatchers.IO) {
+        val request = Request.Builder().url(url)
+            .header("User-Agent", userAgent)
+            .header("Referer", "$mainUrl/")
+            .build()
         runCatching {
-            withContext(Dispatchers.Main) {
-                val cm = CookieManager.getInstance()
-                cm.removeAllCookies(null)
-                cm.flush()
-            }
-        }
+            client.newCall(request).execute().use { it.isSuccessful }
+        }.getOrDefault(false)
     }
 
     override suspend fun loadLinks(
@@ -334,28 +370,32 @@ class SlotintvProvider(private val appContext: Context? = null) : MainApi() {
             "$base$data/mono.m3u8"
         }
 
-        var session = warmupCloudflare(streamUrl)
-        var winning = probeStream(streamUrl, candidatesFor(session, streamUrl))
+        var finalUrl = streamUrl
+        var headers = mapOf(
+            "User-Agent" to userAgent,
+            "Referer" to "$mainUrl/"
+        )
 
-        if (winning == null) {
-            clearWebViewCookies()
-            cfCache.clear()
-            session = warmupCloudflare(streamUrl)
-            winning = probeStream(streamUrl, candidatesFor(session, streamUrl))
+        if (!probeStream(streamUrl)) {
+            ensureProxy(streamUrl)
+            val test = if (proxyView != null) wvFetch(streamUrl) else null
+            Log.d("SlotinTV", "webview fetch -> ${test?.status}")
+            if (test != null && test.status in 200..399) {
+                finalUrl = "http://127.0.0.1:$proxyPort/f?u=" +
+                    URLEncoder.encode(streamUrl, "UTF-8")
+                headers = emptyMap()
+            }
         }
-
-        val chosen = winning ?: candidatesFor(session, streamUrl).first()
-        val referer = chosen["Referer"].orEmpty()
 
         callback(
             ExtractorLink(
                 source = name,
                 name = name,
-                url = streamUrl,
-                referer = referer,
+                url = finalUrl,
+                referer = headers["Referer"].orEmpty(),
                 quality = 720,
                 type = ExtractorLinkType.M3U8,
-                headers = chosen - "Referer"
+                headers = headers - "Referer"
             )
         )
         return true
