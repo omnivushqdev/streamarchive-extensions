@@ -7,6 +7,7 @@ import android.util.Base64
 import android.util.Log
 import android.webkit.CookieManager
 import android.webkit.JavascriptInterface
+import android.webkit.WebResourceRequest
 import android.webkit.WebView
 import android.webkit.WebViewClient
 import com.easy.streamarchive.core.api.ExtractorLink
@@ -200,7 +201,7 @@ class SlotintvProvider(private val appContext: Context? = null) : MainApi() {
             val body = runCatching {
                 Base64.decode(bodyB64, Base64.DEFAULT)
             }.getOrDefault(ByteArray(0))
-            pending[id]?.complete(FetchResult(status, contentType, body))
+            pending.remove(id)?.complete(FetchResult(status, contentType, body))
         }
     }
 
@@ -222,21 +223,38 @@ class SlotintvProvider(private val appContext: Context? = null) : MainApi() {
         return if (pathStart > 0) url.substring(0, pathStart) else url
     }
 
-    private suspend fun ensureProxy(targetUrl: String) = withContext(Dispatchers.Main) {
+    @Volatile private var capturedStream: Pair<String, Map<String, String>>? = null
+
+    private suspend fun ensureProxy(pageUrl: String) = withContext(Dispatchers.Main) {
         val ctx = appContext ?: return@withContext
-        val host = hostOf(targetUrl)
 
         if (proxyView == null) {
             val wv = WebView(ctx)
             wv.settings.javaScriptEnabled = true
             wv.settings.domStorageEnabled = true
+            CookieManager.getInstance().setAcceptThirdPartyCookies(wv, true)
             wv.addJavascriptInterface(JsBridge(), "AndroidBridge")
+            wv.webViewClient = object : WebViewClient() {
+                override fun shouldInterceptRequest(
+                    view: WebView,
+                    request: WebResourceRequest
+                ) = run {
+                    val u = request.url.toString()
+                    if (u.contains(".m3u8")) {
+                        Log.d("SlotinTV", "wv stream req: $u headers=${request.requestHeaders}")
+                        capturedStream = u to
+                            (request.requestHeaders?.toMap() ?: emptyMap())
+                    }
+                    super.shouldInterceptRequest(view, request)
+                }
+            }
             proxyView = wv
         }
         if (proxyPort == 0) startProxyServer()
 
-        if (proxyHost != host) {
-            proxyHost = host
+        if (proxyHost != pageUrl) {
+            proxyHost = pageUrl
+            capturedStream = null
             suspendCancellableCoroutine<Unit> { cont ->
                 var resumed = false
                 fun done() {
@@ -244,13 +262,15 @@ class SlotintvProvider(private val appContext: Context? = null) : MainApi() {
                     resumed = true
                     if (cont.isActive) cont.resume(Unit)
                 }
-                proxyView?.webViewClient = object : WebViewClient() {
-                    override fun onPageFinished(view: WebView, u: String) {
-                        mainHandler.postDelayed({ done() }, 4000)
+                val poll = object : Runnable {
+                    var ticks = 0
+                    override fun run() {
+                        if (capturedStream != null || ++ticks >= 16) done()
+                        else mainHandler.postDelayed(this, 500)
                     }
                 }
-                proxyView?.loadUrl(rootOf(targetUrl))
-                mainHandler.postDelayed({ done() }, 10000)
+                proxyView?.loadUrl(pageUrl)
+                mainHandler.postDelayed(poll, 500)
             }
         }
     }
@@ -330,7 +350,7 @@ class SlotintvProvider(private val appContext: Context? = null) : MainApi() {
         val id = UUID.randomUUID().toString()
         val deferred = CompletableDeferred<FetchResult>()
         pending[id] = deferred
-        val js = """(function(){fetch("$url",{credentials:'include'})
+        val js = """(function(){fetch("$url")
             .then(async function(r){var b=await r.arrayBuffer();var u=new Uint8Array(b);
             var s='';for(var i=0;i<u.length;i+=16384){s+=String.fromCharCode.apply(null,
             u.subarray(i,Math.min(i+16384,u.length)))}
@@ -377,9 +397,11 @@ class SlotintvProvider(private val appContext: Context? = null) : MainApi() {
         )
 
         if (!probeStream(streamUrl)) {
-            ensureProxy(streamUrl)
+            val pageUrl = if (data.startsWith("http")) streamUrl
+                else "$mainUrl/channel?id=$data"
+            ensureProxy(pageUrl)
             val test = if (proxyView != null) wvFetch(streamUrl) else null
-            Log.d("SlotinTV", "webview fetch -> ${test?.status}")
+            Log.d("SlotinTV", "webview fetch -> ${test?.status} captured=$capturedStream")
             if (test != null && test.status in 200..399) {
                 finalUrl = "http://127.0.0.1:$proxyPort/f?u=" +
                     URLEncoder.encode(streamUrl, "UTF-8")
