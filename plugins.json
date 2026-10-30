@@ -7,7 +7,10 @@
     "status": 1,
     "version": 15,
     "language": "tr",
-    "tvTypes": ["Live", "Sports"],
+    "tvTypes": [
+      "Live",
+      "Sports"
+    ],
     "iconUrl": "https://30slotintv.live/logo.png"
   },
   {
@@ -18,7 +21,9 @@
     "status": 1,
     "version": 1,
     "language": "tr",
-    "tvTypes": ["Live"],
+    "tvTypes": [
+      "Live"
+    ],
     "iconUrl": "https://www.ecanlitvizle.live/favicon.ico"
   },
   {
@@ -29,7 +34,9 @@
     "status": 1,
     "version": 1,
     "language": "tr",
-    "tvTypes": ["Movie"],
+    "tvTypes": [
+      "Movie"
+    ],
     "iconUrl": "https://www.fullhdfilmizlesene.now/favicon.ico"
   },
   {
@@ -40,7 +47,24 @@
     "status": 1,
     "version": 4,
     "language": "tr",
-    "tvTypes": ["Movie", "TvSeries"],
+    "tvTypes": [
+      "Movie",
+      "TvSeries"
+    ],
     "iconUrl": "https://www.setfilmizle.ltd/favicon.ico"
+  },
+  {
+    "internalName": "YabanciDizi",
+    "name": "Yabanci Dizi",
+    "description": "yabancidizi.news - Dizi ve film",
+    "url": "https://raw.githubusercontent.com/omnivushqdev/streamarchive-extensions/main/hosting/YabanciDizi.cs3",
+    "status": 1,
+    "version": 1,
+    "language": "tr",
+    "tvTypes": [
+      "TvSeries",
+      "Movie"
+    ],
+    "iconUrl": "https://yabancidizi.news/favicon.ico"
   }
 ]
