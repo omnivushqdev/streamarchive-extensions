@@ -38,7 +38,7 @@
     "description": "setfilmizle.ltd - Film ve dizi",
     "url": "https://eksikhayat.online/yukle/eklenti/SetFilmizle.cs3",
     "status": 1,
-    "version": 1,
+    "version": 2,
     "language": "tr",
     "tvTypes": ["Movie", "TvSeries"],
     "iconUrl": "https://www.setfilmizle.ltd/favicon.ico"
