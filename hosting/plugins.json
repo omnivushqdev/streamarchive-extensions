@@ -7,10 +7,7 @@
     "status": 1,
     "version": 15,
     "language": "tr",
-    "tvTypes": [
-      "Live",
-      "Sports"
-    ],
+    "tvTypes": ["Live", "Sports"],
     "iconUrl": "https://30slotintv.live/logo.png"
   },
   {
@@ -21,9 +18,7 @@
     "status": 1,
     "version": 1,
     "language": "tr",
-    "tvTypes": [
-      "Live"
-    ],
+    "tvTypes": ["Live"],
     "iconUrl": "https://www.ecanlitvizle.live/favicon.ico"
   },
   {
@@ -32,11 +27,20 @@
     "description": "fullhdfilmizlesene.now - Turkce dublaj film",
     "url": "https://eksikhayat.online/yukle/eklenti/FullHDizleSene.cs3",
     "status": 1,
-    "version": 7,
+    "version": 1,
     "language": "tr",
-    "tvTypes": [
-      "Movie"
-    ],
+    "tvTypes": ["Movie"],
     "iconUrl": "https://www.fullhdfilmizlesene.now/favicon.ico"
+  },
+  {
+    "internalName": "SetFilmizle",
+    "name": "SetFilm Izle",
+    "description": "setfilmizle.ltd - Film ve dizi",
+    "url": "https://eksikhayat.online/yukle/eklenti/SetFilmizle.cs3",
+    "status": 1,
+    "version": 1,
+    "language": "tr",
+    "tvTypes": ["Movie", "TvSeries"],
+    "iconUrl": "https://www.setfilmizle.ltd/favicon.ico"
   }
 ]

@@ -31,5 +31,16 @@
     "language": "tr",
     "tvTypes": ["Movie"],
     "iconUrl": "https://www.fullhdfilmizlesene.now/favicon.ico"
+  },
+  {
+    "internalName": "SetFilmizle",
+    "name": "SetFilm Izle",
+    "description": "setfilmizle.ltd - Film ve dizi",
+    "url": "https://raw.githubusercontent.com/omnivushqdev/streamarchive-extensions/main/hosting/SetFilmizle.cs3",
+    "status": 1,
+    "version": 1,
+    "language": "tr",
+    "tvTypes": ["Movie", "TvSeries"],
+    "iconUrl": "https://www.setfilmizle.ltd/favicon.ico"
   }
 ]
