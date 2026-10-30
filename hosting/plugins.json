@@ -59,7 +59,7 @@
     "description": "yabancidizi.news - Dizi ve film",
     "url": "https://eksikhayat.online/yukle/eklenti/YabanciDizi.cs3",
     "status": 1,
-    "version": 2,
+    "version": 3,
     "language": "tr",
     "tvTypes": [
       "TvSeries",
