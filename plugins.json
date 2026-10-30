@@ -2,12 +2,23 @@
   {
     "internalName": "SlotinTV",
     "name": "Slotin TV",
-    "description": "Canli mac ve TV kanallari",
+    "description": "30slotintv.live - Canli mac ve TV kanallari",
     "url": "https://raw.githubusercontent.com/omnivushqdev/streamarchive-extensions/main/SlotinTV.cs3",
     "status": 1,
     "version": 15,
     "language": "tr",
-    "tvTypes": ["Live"],
+    "tvTypes": ["Live", "Sports"],
     "iconUrl": "https://30slotintv.live/logo.png"
+  },
+  {
+    "internalName": "EcanliTV",
+    "name": "eCanli Tv Izle",
+    "description": "ecanlitvizle.live - Canli TV kanallari",
+    "url": "https://raw.githubusercontent.com/omnivushqdev/streamarchive-extensions/main/hosting/EcanliTV.cs3",
+    "status": 1,
+    "version": 1,
+    "language": "tr",
+    "tvTypes": ["Live"],
+    "iconUrl": "https://www.ecanlitvizle.live/favicon.ico"
   }
 ]
