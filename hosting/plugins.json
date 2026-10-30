@@ -66,5 +66,18 @@
       "Movie"
     ],
     "iconUrl": "https://yabancidizi.news/favicon.ico"
+  },
+  {
+    "internalName": "SporTV",
+    "name": "Spor TV",
+    "description": "PapazSports + CanliKolik - Spor kanallari",
+    "url": "https://eksikhayat.online/yukle/eklenti/Sportv.cs3",
+    "status": 1,
+    "version": 1,
+    "language": "tr",
+    "tvTypes": [
+      "Live"
+    ],
+    "iconUrl": "https://www.papazsports1032.pro/favicon.ico"
   }
 ]
