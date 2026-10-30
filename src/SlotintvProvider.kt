@@ -225,8 +225,6 @@ class SlotintvProvider(private val appContext: Context? = null) : MainApi() {
     @Volatile private var proxyHost: String? = null
     @Volatile private var pageReady = false
     @Volatile private var directOk: Boolean? = null
-    private val resolvedLinks = ConcurrentHashMap<String, Pair<Long, String>>()
-    private val resolvedTtlMs = 10 * 60 * 1000L
     private val mainHandler = Handler(Looper.getMainLooper())
 
     private fun hostOf(url: String): String =
@@ -272,7 +270,7 @@ class SlotintvProvider(private val appContext: Context? = null) : MainApi() {
         }
         if (proxyPort == 0) startProxyServer()
 
-        if (proxyHost != pageUrl) {
+        if (proxyHost != pageUrl || !pageReady) {
             proxyHost = pageUrl
             capturedStream = null
             pageReady = false
@@ -319,9 +317,17 @@ class SlotintvProvider(private val appContext: Context? = null) : MainApi() {
                 URLDecoder.decode(u, "UTF-8")
             }.getOrNull() ?: return
 
-            val result = runBlocking { wvFetch(target) }
+            var result = runBlocking { wvFetch(target) }
+            if (result == null || result.status !in 200..399) {
+                Log.d("SlotinTV", "proxy first try -> ${result?.status}, reloading page")
+                pageReady = false
+                runBlocking {
+                    runCatching { ensureProxy(proxyHost ?: "$mainUrl/") }
+                }
+                result = runBlocking { wvFetch(target) }
+            }
             val out = s.getOutputStream()
-            if (result == null) {
+            if (result == null || result.status !in 200..399) {
                 out.write("HTTP/1.1 502 Bad Gateway\r\nContent-Length: 0\r\n\r\n".toByteArray())
                 out.flush()
                 return
@@ -447,15 +453,6 @@ class SlotintvProvider(private val appContext: Context? = null) : MainApi() {
             "Referer" to "$mainUrl/"
         )
 
-        resolvedLinks[data]?.let { (time, cached) ->
-            if (System.currentTimeMillis() - time < resolvedTtlMs) {
-                finalUrl = cached
-                if (cached.startsWith("http://127.0.0.1")) headers = emptyMap()
-                emit(finalUrl, headers, callback)
-                return true
-            }
-        }
-
         if (directOk == null) directOk = probeStream(streamUrl)
 
         if (directOk == true) {
@@ -470,7 +467,6 @@ class SlotintvProvider(private val appContext: Context? = null) : MainApi() {
                 headers = emptyMap()
             }
         }
-        resolvedLinks[data] = System.currentTimeMillis() to finalUrl
         emit(finalUrl, headers, callback)
         return true
     }
