@@ -58,7 +58,7 @@ class SlotintvProvider(private val appContext: Context? = null) : MainApi() {
     override var mainUrl = "https://30slotintv.live"
     override var lang = "tr"
     override val hasMainPage = true
-    override var supportedTypes = setOf(TvType.Live)
+    override var supportedTypes = setOf(TvType.Live, TvType.Sports)
 
     private val dataUrl = "https://data-reality.com"
 
@@ -80,7 +80,9 @@ class SlotintvProvider(private val appContext: Context? = null) : MainApi() {
         val name: String,
         val detail: String,
         val posterUrl: String?,
-        val isChannel: Boolean
+        val isChannel: Boolean,
+        val posterAwayUrl: String? = null,
+        val time: String? = null
     )
 
     private var cachedItems: List<LiveItem> = emptyList()
@@ -124,6 +126,8 @@ class SlotintvProvider(private val appContext: Context? = null) : MainApi() {
             val name: String
             val poster: String?
             val detail: String
+            var awayPoster: String? = null
+            var time: String? = null
             if (isChannel) {
                 name = home
                 poster = fixUrl(
@@ -132,11 +136,15 @@ class SlotintvProvider(private val appContext: Context? = null) : MainApi() {
                 detail = event.ifBlank { "7/24 Canlı" }
             } else {
                 val away = stripTags(awayBlock)
-                name = "$home - $away"
+                val kickoff = event.substringBefore(" | ")
+                    .takeIf { it.matches(Regex("\\d{1,2}:\\d{2}")) }
+                time = kickoff
+                name = "$home - $away" + (kickoff?.let { " ($it)" } ?: "")
                 poster = fixUrl(images.firstOrNull())
+                awayPoster = fixUrl(images.getOrNull(1))
                 detail = listOf(date, event).filter { it.isNotBlank() }.joinToString(" | ")
             }
-            LiveItem(id, name, detail, poster, isChannel)
+            LiveItem(id, name, detail, poster, isChannel, awayPoster, time)
         }.distinctBy { "${it.isChannel}:${it.id}:${it.name}" }
     }
 
@@ -154,14 +162,18 @@ class SlotintvProvider(private val appContext: Context? = null) : MainApi() {
         name = name,
         url = "channel?id=$id",
         apiName = this@SlotintvProvider.name,
-        type = TvType.Live,
+        type = if (isChannel) TvType.Live else TvType.Sports,
         posterUrl = posterUrl
-    )
+    ).apply { posterAwayUrl = this@toSearchResponse.posterAwayUrl }
 
     override suspend fun getMainPage(page: Int, request: MainPageRequest): HomePageResponse {
         val items = if (page > 1) cachedItems.ifEmpty { fetchAll() } else fetchAll()
-        val matches = items.filter { !it.isChannel }.map { it.toSearchResponse() }
-        val channels = items.filter { it.isChannel }.map { it.toSearchResponse() }
+        val matches = items.filter { !it.isChannel }
+            .takeIf { request.type != TvType.Live }
+            .orEmpty().map { it.toSearchResponse() }
+        val channels = items.filter { it.isChannel }
+            .takeIf { request.type != TvType.Sports }
+            .orEmpty().map { it.toSearchResponse() }
         return HomePageResponse(
             listOfNotNull(
                 if (matches.isNotEmpty())
@@ -192,7 +204,7 @@ class SlotintvProvider(private val appContext: Context? = null) : MainApi() {
             name = item?.name ?: "Canlı Yayın",
             url = url,
             apiName = name,
-            type = TvType.Live,
+            type = if (item?.isChannel == false) TvType.Sports else TvType.Live,
             posterUrl = item?.posterUrl,
             plot = item?.detail,
             dataUrl = id
