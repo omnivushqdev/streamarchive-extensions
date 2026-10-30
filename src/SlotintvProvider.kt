@@ -69,6 +69,10 @@ class SlotintvProvider(private val appContext: Context? = null) : MainApi() {
         .readTimeout(20, TimeUnit.SECONDS)
         .build()
 
+    private val http1Client = client.newBuilder()
+        .protocols(listOf(okhttp3.Protocol.HTTP_1_1))
+        .build()
+
     private data class LiveItem(
         val id: String,
         val name: String,
@@ -381,14 +385,44 @@ class SlotintvProvider(private val appContext: Context? = null) : MainApi() {
     }
 
     private suspend fun probeStream(url: String): Boolean = withContext(Dispatchers.IO) {
-        val request = Request.Builder().url(url)
-            .header("User-Agent", userAgent)
-            .header("Referer", "$mainUrl/")
-            .build()
-        runCatching {
-            client.newCall(request).execute().use { it.isSuccessful }
-        }.getOrDefault(false)
+        val chromeHeaders = mapOf(
+            "User-Agent" to userAgent,
+            "Accept" to "*/*",
+            "Accept-Language" to "tr-TR,tr;q=0.9,en-US;q=0.8,en;q=0.7",
+            "Referer" to "$mainUrl/",
+            "Origin" to mainUrl,
+            "sec-ch-ua" to "\"Chromium\";v=\"130\", \"Google Chrome\";v=\"130\", \"Not?A_Brand\";v=\"99\"",
+            "sec-ch-ua-mobile" to "?1",
+            "sec-ch-ua-platform" to "\"Android\"",
+            "Sec-Fetch-Dest" to "empty",
+            "Sec-Fetch-Mode" to "cors",
+            "Sec-Fetch-Site" to "cross-site"
+        )
+        val attempts = listOf(
+            client to mapOf("User-Agent" to userAgent, "Referer" to "$mainUrl/"),
+            client to chromeHeaders,
+            http1Client to chromeHeaders,
+            http1Client to mapOf("User-Agent" to userAgent)
+        )
+        for ((c, headers) in attempts) {
+            val request = Request.Builder().url(url).apply {
+                headers.forEach { (k, v) -> header(k, v) }
+            }.build()
+            val code = runCatching {
+                c.newCall(request).execute().use { it.code }
+            }.getOrDefault(-1)
+            Log.d("SlotinTV", "probe h1=${c === http1Client} ${headers.keys} -> $code")
+            if (code in 200..399) {
+                directHeaders = headers
+                directClient = c
+                return@withContext true
+            }
+        }
+        false
     }
+
+    @Volatile private var directHeaders: Map<String, String> = emptyMap()
+    @Volatile private var directClient: OkHttpClient = client
 
     override suspend fun loadLinks(
         data: String,
@@ -422,7 +456,9 @@ class SlotintvProvider(private val appContext: Context? = null) : MainApi() {
 
         if (directOk == null) directOk = probeStream(streamUrl)
 
-        if (directOk == false && appContext != null) {
+        if (directOk == true) {
+            headers = directHeaders
+        } else if (appContext != null) {
             ensureProxy("$mainUrl/")
             val test = if (proxyView != null) wvFetch(streamUrl) else null
             Log.d("SlotinTV", "webview fetch -> ${test?.status} captured=$capturedStream")
