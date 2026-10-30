@@ -317,14 +317,14 @@ class SlotintvProvider(private val appContext: Context? = null) : MainApi() {
                 URLDecoder.decode(u, "UTF-8")
             }.getOrNull() ?: return
 
-            var result = runBlocking { wvFetch(target) }
-            if (result == null || result.status !in 200..399) {
-                Log.d("SlotinTV", "proxy first try -> ${result?.status}, reloading page")
+            var result = runBlocking { wvFetchRetry(target, 4) }
+            if (result == null) {
+                Log.d("SlotinTV", "proxy retries failed, reloading page")
                 pageReady = false
                 runBlocking {
                     runCatching { ensureProxy(proxyHost ?: "$mainUrl/") }
                 }
-                result = runBlocking { wvFetch(target) }
+                result = runBlocking { wvFetchRetry(target, 4) }
             }
             val out = s.getOutputStream()
             if (result == null || result.status !in 200..399) {
@@ -383,13 +383,26 @@ class SlotintvProvider(private val appContext: Context? = null) : MainApi() {
             u.subarray(i,Math.min(i+16384,u.length)))}
             AndroidBridge.onResult("$id",r.status,
             (r.headers.get('content-type')||'application/octet-stream'),btoa(s))})
-            .catch(function(e){AndroidBridge.onResult("$id",-1,'','')})})()"""
+            .catch(function(e){AndroidBridge.onResult("$id",-1,'',btoa(String(e)))})})()"""
         withContext(Dispatchers.Main) {
             runCatching { wv.evaluateJavascript(js, null) }
         }
-        val result = withTimeoutOrNull(15_000) { deferred.await() }
+        val result = withTimeoutOrNull(10_000) { deferred.await() }
         pending.remove(id)
+        if (result?.status == -1) {
+            Log.d("SlotinTV", "wvFetch js error: ${String(result.body)}")
+        }
         return result
+    }
+
+    private suspend fun wvFetchRetry(url: String, tries: Int = 8): FetchResult? {
+        repeat(tries) { attempt ->
+            val result = wvFetch(url)
+            if (result != null && result.status in 200..399) return result
+            Log.d("SlotinTV", "wvFetch attempt ${attempt + 1} -> ${result?.status}")
+            kotlinx.coroutines.delay(800)
+        }
+        return null
     }
 
     private suspend fun probeStream(url: String): Boolean = withContext(Dispatchers.IO) {
@@ -459,7 +472,7 @@ class SlotintvProvider(private val appContext: Context? = null) : MainApi() {
             headers = directHeaders
         } else if (appContext != null) {
             ensureProxy("$mainUrl/")
-            val test = if (proxyView != null) wvFetch(streamUrl) else null
+            val test = if (proxyView != null) wvFetchRetry(streamUrl) else null
             Log.d("SlotinTV", "webview fetch -> ${test?.status} captured=$capturedStream")
             if (test != null && test.status in 200..399) {
                 finalUrl = "http://127.0.0.1:$proxyPort/f?u=" +
