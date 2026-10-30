@@ -1,19 +1,5 @@
 [
   {
-    "internalName": "SlotinTV",
-    "name": "Slotin TV",
-    "description": "30slotintv.live - Canli mac ve TV kanallari",
-    "url": "https://eksikhayat.online/yukle/eklenti/SlotinTV.cs3",
-    "status": 1,
-    "version": 15,
-    "language": "tr",
-    "tvTypes": [
-      "Live",
-      "Sports"
-    ],
-    "iconUrl": "https://30slotintv.live/logo.png"
-  },
-  {
     "internalName": "EcanliTV",
     "name": "eCanli Tv Izle",
     "description": "ecanlitvizle.live - Canli TV kanallari",
@@ -66,19 +52,6 @@
       "Movie"
     ],
     "iconUrl": "https://yabancidizi.news/favicon.ico"
-  },
-  {
-    "internalName": "SporTV",
-    "name": "Spor TV",
-    "description": "PapazSports + CanliKolik - Spor kanallari",
-    "url": "https://eksikhayat.online/yukle/eklenti/Sportv.cs3",
-    "status": 1,
-    "version": 5,
-    "language": "tr",
-    "tvTypes": [
-      "Live"
-    ],
-    "iconUrl": "https://www.papazsports1032.pro/favicon.ico"
   },
   {
     "internalName": "MergedTV",
