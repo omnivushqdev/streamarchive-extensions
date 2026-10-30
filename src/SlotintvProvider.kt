@@ -82,7 +82,8 @@ class SlotintvProvider(private val appContext: Context? = null) : MainApi() {
         val posterUrl: String?,
         val isChannel: Boolean,
         val posterAwayUrl: String? = null,
-        val time: String? = null
+        val time: String? = null,
+        val league: String? = null
     )
 
     private var cachedItems: List<LiveItem> = emptyList()
@@ -128,6 +129,7 @@ class SlotintvProvider(private val appContext: Context? = null) : MainApi() {
             val detail: String
             var awayPoster: String? = null
             var time: String? = null
+            var league: String? = null
             if (isChannel) {
                 name = home
                 poster = fixUrl(
@@ -143,8 +145,10 @@ class SlotintvProvider(private val appContext: Context? = null) : MainApi() {
                 poster = fixUrl(images.firstOrNull())
                 awayPoster = fixUrl(images.getOrNull(1))
                 detail = listOf(date, event).filter { it.isNotBlank() }.joinToString(" | ")
+                league = event.substringAfter(" | ")
+                    .takeIf { it.isNotBlank() && it != event }
             }
-            LiveItem(id, name, detail, poster, isChannel, awayPoster, time)
+            LiveItem(id, name, detail, poster, isChannel, awayPoster, time, league)
         }.distinctBy { "${it.isChannel}:${it.id}:${it.name}" }
     }
 
@@ -168,18 +172,21 @@ class SlotintvProvider(private val appContext: Context? = null) : MainApi() {
 
     override suspend fun getMainPage(page: Int, request: MainPageRequest): HomePageResponse {
         val items = if (page > 1) cachedItems.ifEmpty { fetchAll() } else fetchAll()
-        val matches = items.filter { !it.isChannel }
+        val matchGroups = items.filter { !it.isChannel }
             .takeIf { request.type != TvType.Live }
-            .orEmpty().map { it.toSearchResponse() }
+            .orEmpty()
+            .groupBy { it.league ?: "Maçlar" }
         val channels = items.filter { it.isChannel }
             .takeIf { request.type != TvType.Sports }
             .orEmpty().map { it.toSearchResponse() }
         return HomePageResponse(
-            listOfNotNull(
-                if (matches.isNotEmpty())
-                    HomePageList("Maçlar", matches, isHorizontalImages = true) else null,
+            matchGroups.map { (league, games) ->
+                HomePageList(league, games.map { it.toSearchResponse() },
+                    isHorizontalImages = true)
+            } + listOfNotNull(
                 if (channels.isNotEmpty())
-                    HomePageList("Spor Kanalları", channels, isHorizontalImages = true) else null
+                    HomePageList("Spor Kanalları", channels, isHorizontalImages = true)
+                else null
             ),
             hasNext = false
         )
