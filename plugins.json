@@ -3,7 +3,7 @@
     "internalName": "SlotinTV",
     "name": "Slotin TV",
     "description": "30slotintv.live - Canli mac ve TV kanallari",
-    "url": "https://raw.githubusercontent.com/omnivushqdev/streamarchive-extensions/main/SlotinTV.cs3",
+    "url": "https://raw.githubusercontent.com/omnivushqdev/streamarchive-extensions/main/hosting/SlotinTV.cs3",
     "status": 1,
     "version": 15,
     "language": "tr",
@@ -20,5 +20,16 @@
     "language": "tr",
     "tvTypes": ["Live"],
     "iconUrl": "https://www.ecanlitvizle.live/favicon.ico"
+  },
+  {
+    "internalName": "FullHDizleSene",
+    "name": "FullHD Film Izle Sene",
+    "description": "fullhdfilmizlesene.now - Turkce dublaj film",
+    "url": "https://raw.githubusercontent.com/omnivushqdev/streamarchive-extensions/main/hosting/FullHDizleSene.cs3",
+    "status": 1,
+    "version": 1,
+    "language": "tr",
+    "tvTypes": ["Movie"],
+    "iconUrl": "https://www.fullhdfilmizlesene.now/favicon.ico"
   }
 ]

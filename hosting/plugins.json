@@ -20,5 +20,16 @@
     "language": "tr",
     "tvTypes": ["Live"],
     "iconUrl": "https://www.ecanlitvizle.live/favicon.ico"
+  },
+  {
+    "internalName": "FullHDizleSene",
+    "name": "FullHD Film Izle Sene",
+    "description": "fullhdfilmizlesene.now - Turkce dublaj film",
+    "url": "https://eksikhayat.online/eklenti/FullHDizleSene.cs3",
+    "status": 1,
+    "version": 1,
+    "language": "tr",
+    "tvTypes": ["Movie"],
+    "iconUrl": "https://www.fullhdfilmizlesene.now/favicon.ico"
   }
 ]
