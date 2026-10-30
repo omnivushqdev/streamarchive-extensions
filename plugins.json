@@ -92,5 +92,19 @@
       "Live"
     ],
     "iconUrl": "https://www.tabii.com/favicon.ico"
+  },
+  {
+    "internalName": "Dizimag",
+    "name": "Dizimag",
+    "description": "ddizimag.com - Dizi, film, anime (arama)",
+    "url": "https://raw.githubusercontent.com/omnivushqdev/streamarchive-extensions/main/hosting/Dizimag.cs3",
+    "status": 1,
+    "version": 1,
+    "language": "tr",
+    "tvTypes": [
+      "TvSeries",
+      "Movie"
+    ],
+    "iconUrl": "https://ddizimag.com/favicon.ico"
   }
 ]
