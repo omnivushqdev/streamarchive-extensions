@@ -79,5 +79,19 @@
       "Live"
     ],
     "iconUrl": "https://www.papazsports1032.pro/favicon.ico"
+  },
+  {
+    "internalName": "MergedTV",
+    "name": "Spor TV+",
+    "description": "Slotin TV + PapazSports - maclar ve spor kanallari (birlesik)",
+    "url": "https://eksikhayat.online/yukle/eklenti/MergedTV.cs3",
+    "status": 1,
+    "version": 1,
+    "language": "tr",
+    "tvTypes": [
+      "Live",
+      "Sports"
+    ],
+    "iconUrl": "https://www.papazsports1032.pro/favicon.ico"
   }
 ]
