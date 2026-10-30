@@ -24,6 +24,7 @@ import com.easy.streamarchive.core.api.SubtitleFile
 import com.easy.streamarchive.core.api.TvType
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.launch
 import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.suspendCancellableCoroutine
 import kotlinx.coroutines.withContext
@@ -174,6 +175,11 @@ class SlotintvProvider(private val appContext: Context? = null) : MainApi() {
 
     override suspend fun load(url: String): LoadResponse {
         val id = url.substringAfter("id=").substringBefore("&")
+        if (appContext != null && directOk != true) {
+            kotlinx.coroutines.GlobalScope.launch {
+                runCatching { ensureProxy("$mainUrl/") }
+            }
+        }
         val item = cachedItems.ifEmpty { fetchAll() }
             .firstOrNull { it.id == id }
         return MovieLoadResponse(
@@ -211,6 +217,10 @@ class SlotintvProvider(private val appContext: Context? = null) : MainApi() {
     @Volatile private var proxyView: WebView? = null
     @Volatile private var proxyPort = 0
     @Volatile private var proxyHost: String? = null
+    @Volatile private var pageReady = false
+    @Volatile private var directOk: Boolean? = null
+    private val resolvedLinks = ConcurrentHashMap<String, Pair<Long, String>>()
+    private val resolvedTtlMs = 10 * 60 * 1000L
     private val mainHandler = Handler(Looper.getMainLooper())
 
     private fun hostOf(url: String): String =
@@ -247,6 +257,10 @@ class SlotintvProvider(private val appContext: Context? = null) : MainApi() {
                     }
                     super.shouldInterceptRequest(view, request)
                 }
+
+                override fun onPageFinished(view: WebView, u: String) {
+                    pageReady = true
+                }
             }
             proxyView = wv
         }
@@ -255,6 +269,7 @@ class SlotintvProvider(private val appContext: Context? = null) : MainApi() {
         if (proxyHost != pageUrl) {
             proxyHost = pageUrl
             capturedStream = null
+            pageReady = false
             suspendCancellableCoroutine<Unit> { cont ->
                 var resumed = false
                 fun done() {
@@ -265,7 +280,7 @@ class SlotintvProvider(private val appContext: Context? = null) : MainApi() {
                 val poll = object : Runnable {
                     var ticks = 0
                     override fun run() {
-                        if (capturedStream != null || ++ticks >= 16) done()
+                        if (pageReady || ++ticks >= 12) done()
                         else mainHandler.postDelayed(this, 500)
                     }
                 }
@@ -360,7 +375,7 @@ class SlotintvProvider(private val appContext: Context? = null) : MainApi() {
         withContext(Dispatchers.Main) {
             runCatching { wv.evaluateJavascript(js, null) }
         }
-        val result = withTimeoutOrNull(30_000) { deferred.await() }
+        val result = withTimeoutOrNull(15_000) { deferred.await() }
         pending.remove(id)
         return result
     }
@@ -396,10 +411,19 @@ class SlotintvProvider(private val appContext: Context? = null) : MainApi() {
             "Referer" to "$mainUrl/"
         )
 
-        if (!probeStream(streamUrl)) {
-            val pageUrl = if (data.startsWith("http")) streamUrl
-                else "$mainUrl/channel?id=$data"
-            ensureProxy(pageUrl)
+        resolvedLinks[data]?.let { (time, cached) ->
+            if (System.currentTimeMillis() - time < resolvedTtlMs) {
+                finalUrl = cached
+                if (cached.startsWith("http://127.0.0.1")) headers = emptyMap()
+                emit(finalUrl, headers, callback)
+                return true
+            }
+        }
+
+        if (directOk == null) directOk = probeStream(streamUrl)
+
+        if (directOk == false && appContext != null) {
+            ensureProxy("$mainUrl/")
             val test = if (proxyView != null) wvFetch(streamUrl) else null
             Log.d("SlotinTV", "webview fetch -> ${test?.status} captured=$capturedStream")
             if (test != null && test.status in 200..399) {
@@ -408,7 +432,16 @@ class SlotintvProvider(private val appContext: Context? = null) : MainApi() {
                 headers = emptyMap()
             }
         }
+        resolvedLinks[data] = System.currentTimeMillis() to finalUrl
+        emit(finalUrl, headers, callback)
+        return true
+    }
 
+    private fun emit(
+        finalUrl: String,
+        headers: Map<String, String>,
+        callback: (ExtractorLink) -> Unit
+    ) {
         callback(
             ExtractorLink(
                 source = name,
@@ -420,6 +453,5 @@ class SlotintvProvider(private val appContext: Context? = null) : MainApi() {
                 headers = headers - "Referer"
             )
         )
-        return true
     }
 }

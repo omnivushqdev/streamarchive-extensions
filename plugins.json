@@ -5,7 +5,7 @@
     "description": "30slotintv.live - Canli mac ve TV kanallari",
     "url": "https://raw.githubusercontent.com/omnivushqdev/streamarchive-extensions/main/SlotinTV.cs3",
     "status": 1,
-    "version": 7,
+    "version": 8,
     "language": "tr",
     "tvTypes": ["Live"],
     "iconUrl": "https://30slotintv.live/logo.png"
