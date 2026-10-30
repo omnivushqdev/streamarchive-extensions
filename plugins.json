@@ -2,10 +2,10 @@
   {
     "internalName": "SlotinTV",
     "name": "Slotin TV",
-    "description": "30slotintv.live - Canli mac ve TV kanallari",
+    "description": "Canli mac ve TV kanallari",
     "url": "https://raw.githubusercontent.com/omnivushqdev/streamarchive-extensions/main/SlotinTV.cs3",
     "status": 1,
-    "version": 9,
+    "version": 10,
     "language": "tr",
     "tvTypes": ["Live"],
     "iconUrl": "https://30slotintv.live/logo.png"

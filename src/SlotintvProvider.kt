@@ -46,7 +46,9 @@ import kotlin.coroutines.resume
 
 class SlotintvPlugin : StreamPlugin() {
     override fun load(context: Context) {
-        registerMainApi(SlotintvProvider(context.applicationContext))
+        if (context.packageName == "com.easy.streamarchive") {
+            registerMainApi(SlotintvProvider(context.applicationContext))
+        }
     }
 }
 

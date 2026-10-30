@@ -1,0 +1,13 @@
+[
+  {
+    "internalName": "SlotinTV",
+    "name": "Slotin TV",
+    "description": "Canli mac ve TV kanallari",
+    "url": "https://SENIN-DOMAIN.com/x7k2p9/SlotinTV.cs3",
+    "status": 1,
+    "version": 10,
+    "language": "tr",
+    "tvTypes": ["Live"],
+    "iconUrl": "https://30slotintv.live/logo.png"
+  }
+]
