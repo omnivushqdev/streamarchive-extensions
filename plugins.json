@@ -73,7 +73,7 @@
     "description": "PapazSports + CanliKolik - Spor kanallari",
     "url": "https://raw.githubusercontent.com/omnivushqdev/streamarchive-extensions/main/hosting/Sportv.cs3",
     "status": 1,
-    "version": 4,
+    "version": 5,
     "language": "tr",
     "tvTypes": [
       "Live"
