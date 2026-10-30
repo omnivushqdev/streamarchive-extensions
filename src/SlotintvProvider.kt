@@ -167,7 +167,7 @@ class SlotintvProvider(private val appContext: Context? = null) : MainApi() {
                 if (matches.isNotEmpty())
                     HomePageList("Maçlar", matches, isHorizontalImages = true) else null,
                 if (channels.isNotEmpty())
-                    HomePageList("Kanallar", channels, isHorizontalImages = true) else null
+                    HomePageList("Spor Kanalları", channels, isHorizontalImages = true) else null
             ),
             hasNext = false
         )
