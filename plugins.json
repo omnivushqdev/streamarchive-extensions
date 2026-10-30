@@ -59,7 +59,7 @@
     "description": "Slotin TV + PapazSports - maclar ve spor kanallari (birlesik)",
     "url": "https://raw.githubusercontent.com/omnivushqdev/streamarchive-extensions/main/hosting/MergedTV.cs3",
     "status": 1,
-    "version": 2,
+    "version": 3,
     "language": "tr",
     "tvTypes": [
       "Live",
